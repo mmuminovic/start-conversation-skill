@@ -1,6 +1,6 @@
 ---
 name: start-conversation
-description: Runs a continuous hands-free voice conversation through Spokenly - Claude speaks a summary of every piece of work out loud and immediately reopens the microphone for the next question, looping until the user says they are done. Works in 38 languages, picked with an argument like /start-conversation en, sr, bs, de, fr, es. Use when the user types /start-conversation or asks to talk by voice instead of typing.
+description: Runs a continuous hands-free voice conversation through Spokenly - Claude speaks a summary of every piece of work out loud and immediately reopens the microphone for the next question, looping until the user says they are done. Works in 38 languages, picked with an argument like /start-conversation en, sr, bs, de, fr, es; optional extra arguments set the voice gender and the speaking rate (slow, fast, +25%). Use when the user types /start-conversation or asks to talk by voice instead of typing.
 hooks:
   Stop:
     - hooks:
@@ -27,7 +27,7 @@ From this point the conversation is spoken. You talk, the user answers by voice,
 
 ## Argument: the language
 
-The skill is invoked as `/start-conversation [language] [gender]`, for example:
+The skill is invoked as `/start-conversation [language] [gender] [rate]`, for example:
 
 - `/start-conversation` → falls back to the default in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.voice-lang-default`, or `bs` if that file does not exist
 - `/start-conversation en` → English
@@ -35,12 +35,15 @@ The skill is invoked as `/start-conversation [language] [gender]`, for example:
 - `/start-conversation bs` → Bosnian
 - `/start-conversation de` → German
 - `/start-conversation fr female` → French, female voice
+- `/start-conversation bs slow` → Bosnian, slower speech
+- `/start-conversation en +25%` → English, 25 % faster than the neutral rate
 
 Rules for reading the argument:
 
 1. The **first** token is the conversation language. Normalize it with the table at the bottom of this file. If several language codes are given (`en de fr`), the **first** one is the language you speak; treat the rest as languages you also accept as input from the user.
 2. A token that is `male`, `female`, `m`, `f`, `zenski`, or `muski` sets the voice gender. Default is `male`.
-3. If the code is not in the table, tell the user in text, list a few close codes, and ask which one they want — do not guess.
+3. A token that is `slow`, `fast`, `sporo`, `brzo`, or a percentage like `+25%` / `-15%` sets the **speech rate**. Default is `+10%` (the neutral rate of the skill). `slow` maps to `-20%`, `fast` to `+30%`; a bare number like `20` means `+20%`.
+4. If the code is not in the table, tell the user in text, list a few close codes, and ask which one they want — do not guess.
 
 **Everything you say and write from now on is in the chosen language**, not just the spoken part.
 
@@ -64,8 +67,11 @@ Before you speak or print anything, re-read the sentence and check: is **every**
 2. If a gender other than the default was requested, also run:
    `printf '%s' "<gender>" > ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.voice-gender`
    and pass `-g <gender>` to every `speak.sh` call afterwards.
-3. Check that the `mcp__spokenly__ask_user_dictation` tool exists. If it does not, say so in text and **stop here** — the loop cannot run without it. Point the user at `/mcp` and at `SPOKENLY-SETUP.md`; they need the Spokenly sideload build 2.18.0 or newer with the MCP bridge enabled.
-4. If the tool exists, **say a short greeting out loud** in the chosen language via Bash:
+3. If a speech rate was requested, also run:
+   `printf '%s' "<rate>" > ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.voice-rate`
+   (e.g. `slow`, `fast`, `+25%`). `speak.sh` reads this file automatically on every call, so you do not need to pass anything extra.
+4. Check that the `mcp__spokenly__ask_user_dictation` tool exists. If it does not, say so in text and **stop here** — the loop cannot run without it. Point the user at `/mcp` and at `SPOKENLY-SETUP.md`; they need the Spokenly sideload build 2.18.0 or newer with the MCP bridge enabled.
+5. If the tool exists, **say a short greeting out loud** in the chosen language via Bash:
    `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/start-conversation/speak.sh -l <code> 'greeting'`
    then immediately call the dictation tool with the same text as the question.
 
@@ -102,6 +108,15 @@ If the user asks to switch language ("let's continue in German", "pređi na engl
 2. use `-l <new code>` in every following `speak.sh` call
 3. speak and write in the new language from that point on
 
+## Changing the speech rate mid-conversation
+
+If the user asks you to speak slower or faster ("pričaj sporije", "speak faster", "malo brže"), do not restart the skill. Just:
+
+1. `printf '%s' "<rate>" > ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.voice-rate` — use `slow`, `fast`, or a percentage like `+25%` / `-15%`
+2. every following `speak.sh` call picks it up automatically
+
+To go back to the normal speed, run `rm -f ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.voice-rate`.
+
 ## When you need approval
 
 If a permission prompt for `Bash` or `Edit` stops you mid-loop, the user sees it on screen but does not hear it. So: if you expect something to require approval, **announce it in the spoken summary before you attempt it** — "I am about to run the database migration, it will ask you for approval on screen."
@@ -110,7 +125,7 @@ If a permission prompt for `Bash` or `Edit` stops you mid-loop, the user sees it
 
 When the user says anything meaning "we are done", "I am out", "enough", "thanks that is all", "bye":
 
-1. run `rm -f ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.voice-lang ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.voice-gender`
+1. run `rm -f ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.voice-lang ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.voice-gender ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.voice-rate`
 2. say a short goodbye out loud via `speak.sh` and say goodbye in text
 3. end the turn — now you may
 

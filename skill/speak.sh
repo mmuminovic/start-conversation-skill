@@ -5,13 +5,14 @@
 #   speak.sh "text"                     # uses the active conversation language
 #   speak.sh -l de "Guten Tag"          # explicit language
 #   speak.sh -l en -g female "Hello"    # explicit language + voice gender
+#   speak.sh -l en -r +25% "Hello"      # explicit speech rate (also: slow, fast, 20)
 #   speak.sh --list                     # print the supported language table
 #
 # Environment overrides:
 #   SPEAK_LANG=de       same as -l
 #   SPEAK_GENDER=female same as -g   (male | female)
 #   SPEAK_VOICE=de-DE-KatjaNeural     hard override, skips the language map
-#   SPEAK_RATE=+10%     speech rate passed to edge-tts
+#   SPEAK_RATE=+10%     same as -r   (speech rate passed to edge-tts)
 #
 # Engine: Microsoft Edge TTS (neural voices) via `uvx edge-tts`.
 # Offline / no uvx: falls back to the macOS `say` command with the closest
@@ -27,6 +28,7 @@ set -euo pipefail
 # (claude-personal / claude-work) do not read each other's language file.
 STATE_DIR="${CLAUDE_VOICE_STATE_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
 LANG_FILE="$STATE_DIR/.voice-lang"
+RATE_FILE="$STATE_DIR/.voice-rate"
 
 # ---------------------------------------------------------------- language map
 
@@ -72,6 +74,24 @@ normalize_lang() {
     vi|vn|vie|vietnamese)                        echo vi ;;
     th|tha|thai)                                 echo th ;;
     *)                                           echo "" ;;
+  esac
+}
+
+# normalize <input> -> edge-tts rate string like "+25%", or "" if unrecognized
+normalize_rate() {
+  case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+    slow|slower|sporo|spor|sporije|langsam)   echo "-20%" ;;
+    fast|faster|brzo|brz|brze|schnell)        echo "+30%" ;;
+    normal|default)                           echo "+10%" ;;
+    [+-][0-9]|[+-][0-9][0-9]|[+-][0-9][0-9][0-9])
+      echo "${1}%" ;;
+    [+-][0-9]%|[+-][0-9][0-9]%|[+-][0-9][0-9][0-9]%)
+      echo "$1" ;;
+    [0-9]|[0-9][0-9]|[0-9][0-9][0-9])
+      echo "+${1}%" ;;
+    [0-9]%|[0-9][0-9]%|[0-9][0-9][0-9]%)
+      echo "+$1" ;;
+    *) echo "" ;;
   esac
 }
 
@@ -215,10 +235,11 @@ speak.sh — speak text aloud in a chosen language
   speak.sh "text"                  speak in the active conversation language
   speak.sh -l de "Guten Tag"       speak in a specific language
   speak.sh -l en -g female "Hi"    choose the voice gender
+  speak.sh -l en -r slow "Hi"      choose the speech rate (slow | fast | +N% | -N%)
   speak.sh --list                  show all supported languages
   speak.sh --check                 verify the TTS engine works
 
-Env: SPEAK_LANG, SPEAK_GENDER (male|female), SPEAK_VOICE, SPEAK_RATE
+Env: SPEAK_LANG, SPEAK_GENDER (male|female), SPEAK_RATE (+N%|-N%|slow|fast), SPEAK_VOICE
 USAGE
 }
 
@@ -226,12 +247,14 @@ USAGE
 
 lang_arg=""
 gender="${SPEAK_GENDER:-male}"
+rate_arg=""
 text=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     -l|--lang)   lang_arg="${2:-}"; shift 2 ;;
     -g|--gender) gender="${2:-male}"; shift 2 ;;
+    -r|--rate)   rate_arg="${2:-}"; shift 2 ;;
     --list)      print_table; exit 0 ;;
     -h|--help)   usage; exit 0 ;;
     --check)     text="TTS check. One two three."; lang_arg="${lang_arg:-en}"; shift ;;
@@ -264,7 +287,20 @@ case "$gender" in
 esac
 
 VOICE="${SPEAK_VOICE:-$(edge_voice "$lang" "$gender")}"
-RATE="${SPEAK_RATE:-+10%}"
+
+# rate: -r flag > SPEAK_RATE > state file > +10%
+raw_rate="${rate_arg:-${SPEAK_RATE:-}}"
+if [ -z "$raw_rate" ] && [ -f "$RATE_FILE" ]; then
+  raw_rate="$(tr -d '[:space:]' < "$RATE_FILE" || true)"
+fi
+RATE=""
+if [ -n "$raw_rate" ]; then
+  RATE="$(normalize_rate "$raw_rate")"
+  if [ -z "$RATE" ]; then
+    printf 'speak.sh: unknown rate "%s" — falling back to +10%%. Use slow, fast, or +N%%/-N%%.\n' "$raw_rate" >&2
+  fi
+fi
+[ -z "$RATE" ] && RATE="+10%"
 
 # ---------------------------------------------------------------------- speaking
 
@@ -278,15 +314,19 @@ if command -v uvx >/dev/null 2>&1 &&
   exit 0
 fi
 
-# Fallback: no network / no uvx -> local macOS voice for that language
+# Fallback: no network / no uvx -> local macOS voice for that language.
+# `say` takes words per minute, not a percentage: map the ±N% rate onto the
+# ~175 wpm default so slow/fast still work offline.
 if command -v say >/dev/null 2>&1; then
+  pct="$(printf '%s' "$RATE" | tr -d '+%')"
+  wpm="$(awk -v p="$pct" 'BEGIN{printf "%d", 175*(1+p/100)}')"
   for cand in $(say_candidates "$lang"); do
     if say -v "$cand" "" >/dev/null 2>&1; then
-      say -v "$cand" "$text"
+      say -v "$cand" -r "$wpm" "$text"
       exit 0
     fi
   done
-  say "$text"
+  say -r "$wpm" "$text"
   exit 0
 fi
 

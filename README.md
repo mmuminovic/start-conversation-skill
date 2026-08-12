@@ -10,6 +10,8 @@ say you are done. **38 languages**, chosen with an argument.
 /start-conversation sr
 /start-conversation bs
 /start-conversation de female
+/start-conversation bs slow
+/start-conversation en +25%
 ```
 
 Speech out is Microsoft Edge TTS neural voices (free, no API key). Speech in is
@@ -141,8 +143,14 @@ Uninstall: `bash ~/Desktop/start-conversation-skill/uninstall.sh`
 
 ## Languages
 
-First argument is the language, second (optional) is the voice gender
-(`male` by default).
+First argument is the language; after it you can optionally add the voice gender
+(`male` by default) and the speech rate, in any order:
+
+```
+/start-conversation de female slow
+/start-conversation en fast
+/start-conversation bs -15%
+```
 
 | Code        | Language        |     | Code    | Language        |     | Code        | Language  |
 | ----------- | --------------- | --- | ------- | --------------- | --- | ----------- | --------- |
@@ -171,6 +179,29 @@ Every voice ID was verified against the live `edge-tts` catalog. See them all:
 ```
 
 Switching language mid-conversation works — just say "let's continue in German".
+
+## Speech rate
+
+The third kind of argument controls how fast Claude talks:
+
+| Argument        | Meaning                                          |
+| --------------- | ------------------------------------------------ |
+| _(none)_        | neutral rate (`+10%` over the voice's baseline)  |
+| `slow` / `sporo`| slower speech (`-20%`)                           |
+| `fast` / `brzo` | faster speech (`+30%`)                           |
+| `+25%`, `-15%`  | exact rate relative to the voice's baseline      |
+| `20`            | bare number — treated as `+20%`                  |
+
+The rate is stored in `$CLAUDE_CONFIG_DIR/.voice-rate` and applies to every
+spoken summary until the conversation ends. You can also change it mid-conversation
+by voice — just say "speak slower" / "pričaj sporije" — or use it directly:
+
+```bash
+"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/skills/start-conversation/speak.sh -l en -r slow 'test'
+```
+
+It works with both engines: Edge TTS takes the percentage natively, and the
+offline macOS `say` fallback maps it onto words per minute.
 
 ---
 
