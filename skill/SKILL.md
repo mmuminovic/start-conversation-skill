@@ -12,7 +12,13 @@ hooks:
             jq -e '.stop_hook_active == true' >/dev/null 2>&1 && exit 0
             VL="$(tr -d '[:space:]' < "$CD/.voice-lang" 2>/dev/null)"
             [ -n "$VL" ] || VL=bs
-            jq -n --arg l "$VL" --arg d "$CD" '{decision:"block", reason:("VOICE MODE IS ACTIVE (language: " + $l + "). You must not end the turn silently. 1) Write a spoken summary of 2 to 4 sentences IN THAT LANGUAGE. 2) Speak it: " + $d + "/skills/start-conversation/speak.sh -l " + $l + " \"<summary>\" 3) Call mcp__spokenly__ask_user_dictation with the same text as the question. If the user said the conversation is over, run: rm -f " + $d + "/.voice-lang — then say goodbye and you may stop.")}'
+            H=""
+            case "$VL" in
+              bs) H=" bs = Bosnian: LATIN script ONLY (never Cyrillic), ijekavica — no Serbian, Croatian or Russian words." ;;
+              hr) H=" hr = Croatian: Latin script, ijekavica, Croatian vocabulary." ;;
+              sr) H=" sr = Serbian: ekavica; Latin script unless the user explicitly asked for Cyrillic." ;;
+            esac
+            jq -n --arg l "$VL" --arg h "$H" --arg d "$CD" '{decision:"block", reason:("VOICE MODE IS ACTIVE (language: " + $l + ")." + $h + " You must not end the turn silently. 1) Write a spoken summary of 2 to 4 sentences IN THAT LANGUAGE. 2) Speak it: " + $d + "/skills/start-conversation/speak.sh -l " + $l + " \"<summary>\" 3) Call mcp__spokenly__ask_user_dictation with the same text as the question. If the user said the conversation is over, run: rm -f " + $d + "/.voice-lang — then say goodbye and you may stop.")}'
 ---
 
 # Voice conversation
@@ -37,6 +43,17 @@ Rules for reading the argument:
 3. If the code is not in the table, tell the user in text, list a few close codes, and ask which one they want — do not guess.
 
 **Everything you say and write from now on is in the chosen language**, not just the spoken part.
+
+## Language fidelity — no mixing, no wrong script
+
+Choosing a language means that exact standard language, in its standard script, with correct orthography. Bosnian, Serbian and Croatian are close but **not interchangeable** — a single wrong word or the wrong script reads as a bug to the user.
+
+- `bs` Bosnian → **Latin script only, never Cyrillic**, ijekavica ("dijete", "riječ", "htio", "vrijeme"). Never use Serbian ekavica forms ("dete", "reč"), never Serbian Cyrillic, never Russian or Macedonian words.
+- `hr` Croatian → Latin script, ijekavica, Croatian vocabulary ("tvrtka", "glazba", "tisuća").
+- `sr` Serbian → ekavica ("dete", "reč"); write in Latin script (latinica) unless the user explicitly asks for Cyrillic.
+- Every other language → its own standard script (Russian in Cyrillic, Greek in Greek script, …). Never borrow a neighboring language's script or vocabulary.
+
+Before you speak or print anything, re-read the sentence and check: is **every** word in the chosen language and its script? If even one word slipped in from a related language, rewrite it. This applies to the on-screen text as much as to the spoken summary.
 
 ## Setup (do this once, immediately)
 
