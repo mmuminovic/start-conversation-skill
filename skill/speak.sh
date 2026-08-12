@@ -16,6 +16,10 @@
 # Engine: Microsoft Edge TTS (neural voices) via `uvx edge-tts`.
 # Offline / no uvx: falls back to the macOS `say` command with the closest
 # installed system voice for that language.
+#
+# User preferences:
+#   - Serbian (sr), Croatian (hr), Bosnian (bs): use bs-BA-GoranNeural (male voice)
+#   - All text respects native characters (č, š, ž, đ, ć, etc.) without simplification
 
 set -euo pipefail
 
@@ -77,9 +81,7 @@ edge_voice() {
   case "$l" in
     en)    [ "$g" = female ] && echo en-US-JennyNeural      || echo en-US-GuyNeural ;;
     en-gb) [ "$g" = female ] && echo en-GB-SoniaNeural      || echo en-GB-RyanNeural ;;
-    bs)    [ "$g" = female ] && echo bs-BA-VesnaNeural      || echo bs-BA-GoranNeural ;;
-    sr)    [ "$g" = female ] && echo sr-RS-SophieNeural     || echo sr-RS-NicholasNeural ;;
-    hr)    [ "$g" = female ] && echo hr-HR-GabrijelaNeural  || echo hr-HR-SreckoNeural ;;
+    bs|sr|hr) echo bs-BA-GoranNeural ;; # user preference: Balkan languages use Goran (male)
     sl)    [ "$g" = female ] && echo sl-SI-PetraNeural      || echo sl-SI-RokNeural ;;
     mk)    [ "$g" = female ] && echo mk-MK-MarijaNeural     || echo mk-MK-AleksandarNeural ;;
     sq)    [ "$g" = female ] && echo sq-AL-AnilaNeural      || echo sq-AL-IlirNeural ;;
